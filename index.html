@@ -91,6 +91,7 @@
     <h1>🎮 Herná Liga - Živá Tabuľka</h1>
     <div class="subtitle">Dáta sa automaticky sťahujú z vašej online Google Tabuľky</div>
 
+    <!-- REŽIM NAČÍTAVANIA -->
     <div id="loadingMessage" class="loading">⏳ Načítavam a prepočítavam výsledky...</div>
 
     <div id="mainContent" style="display: none;">
@@ -126,36 +127,36 @@
 
 <script>
     const SPREADSHEET_ID = '1fOJ-2I-GcSN2aHnyhhbVnwvUOt10ei7Zfn0F6Hb2EBk';
-    // Natvrdo zacielený link na vygenerovaný CSV formát konkrétneho Hárku 1
-    const URL = `https://google.com{SPREADSHEET_ID}/pub?output=csv&gid=0`;
+    // Oficiálny vizualizačný dopyt s návratnou funkciou, ktorý obchádza úplne všetky CORS ochrany
+    const googleUrl = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:callbackFunction`;
 
-    async function loadData() {
+    function loadDataLive() {
+        const script = document.createElement('script');
+        script.src = googleUrl;
+        script.onerror = function() {
+            document.getElementById('loadingMessage').innerHTML = '❌ Nepodarilo sa pripojiť.<br><small style="color:#64748b;">Skontrolujte pripojenie.</small>';
+        };
+        document.body.appendChild(script);
+    }
+
+    // Oficiálna funkcia, ktorú zavolá priamo Google server s čistými dátami
+    window.callbackFunction = function(response) {
         try {
-            const response = await fetch(URL);
-            if (!response.ok) throw new Error('Chyba stiahnutia');
-            const csvText = await response.text();
-            
-            const lines = csvText.split(/\r?\n/);
-            if (lines.length < 2) {
-                document.getElementById('loadingMessage').innerHTML = '⚠️ Tabuľka je prázdna. Pridajte nejaký zápas.';
-                return;
-            }
-
+            const rows = response.table.rows;
             const stats = {};
             const matches = [];
 
-            for (let i = 1; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line) continue;
+            rows.forEach((row) => {
+                if (!row.c || row.c.length < 4) return;
 
-                const cells = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
-                
-                const home = cells[0];
-                const homeGoals = parseInt(cells[1]) || 0;
-                const away = cells[2];
-                const awayGoals = parseInt(cells[3]) || 0;
+                // Bezpečné vytiahnutie hodnôt z Google objektov
+                const home = row.c[0] ? String(row.c[0].v).trim() : '';
+                const homeGoals = row.c[1] ? parseInt(row.c[1].v) || 0 : 0;
+                const away = row.c[2] ? String(row.c[2].v).trim() : '';
+                const awayGoals = row.c[3] ? parseInt(row.c[3].v) || 0 : 0;
 
-                if (!home || !away || home === 'domaci' || home === 'Domáci') continue;
+                // Vynechanie prázdnych riadkov a hlavičky tabuľky
+                if (!home || !away || home.toLowerCase() === 'domaci') return;
 
                 matches.push({ home, away, homeGoals, awayGoals });
 
@@ -173,10 +174,12 @@
                 } else {
                     stats[home].r++; stats[home].pts += 1; stats[away].r++; stats[away].pts += 1;
                 }
-            }
+            });
 
+            // Zoradenie ligy: 1. Body, 2. Rozdiel skóre, 3. Viac strelených gólov
             const sorted = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
             
+            // Vykreslenie tabuľky do dizajnu
             const tbody = document.getElementById('leagueTableBody');
             tbody.innerHTML = '';
             sorted.forEach((t, i) => {
@@ -192,6 +195,7 @@
                 </tr>`;
             });
 
+            // Vykreslenie histórie zápasov
             const historyDiv = document.getElementById('matchHistory');
             historyDiv.innerHTML = matches.length === 0 ? '<p style="color: #64748b; text-align:center;">Zatiaľ neboli odohrané žiadne zápasy.</p>' : '';
             matches.reverse().forEach(m => {
@@ -206,11 +210,11 @@
 
         } catch (error) {
             console.error(error);
-            document.getElementById('loadingMessage').innerHTML = '❌ Chyba spojenia s databázou.<br><small style="color:#64748b; font-weight:normal;">Uistite sa, že ste v nastavení Zdieľať vybrali "Publikovať ako .csv".</small>';
+            document.getElementById('loadingMessage').innerHTML = '❌ Chyba spracovania dát z Google Tabuľky.';
         }
-    }
+    };
 
-    loadData();
+    loadDataLive();
 </script>
 </body>
 </html>
