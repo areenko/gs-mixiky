@@ -126,40 +126,47 @@
 </div>
 
 <script>
+    // Zacielenie priamo na váš novovytvorený CSV export z Publikovania na webe
     const SPREADSHEET_ID = '1fOJ-2I-GcSN2aHnyhhbVnwvUOt10ei7Zfn0F6Hb2EBk';
-    // Oficiálny vizualizačný dopyt s návratnou funkciou, ktorý obchádza úplne všetky CORS ochrany
-    const googleUrl = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:callbackFunction`;
+    const URL = `https://google.com{SPREADSHEET_ID}/pub?output=csv&gid=0`;
 
-    function loadDataLive() {
-        const script = document.createElement('script');
-        script.src = googleUrl;
-        script.onerror = function() {
-            document.getElementById('loadingMessage').innerHTML = '❌ Nepodarilo sa pripojiť.<br><small style="color:#64748b;">Skontrolujte pripojenie.</small>';
-        };
-        document.body.appendChild(script);
-    }
-
-    // Oficiálna funkcia, ktorú zavolá priamo Google server s čistými dátami
-    window.callbackFunction = function(response) {
+    async function loadData() {
         try {
-            const rows = response.table.rows;
+            // Použijeme fetch s vynúteným načítaním čerstvých dát (obíde vyrovnávaciu pamäť)
+            const response = await fetch(URL, { cache: "no-store" });
+            if (!response.ok) throw new Error('Chyba sťahovania dát');
+            
+            const csvText = await response.text();
+            
+            // Rozdelenie na riadky
+            const lines = csvText.split(/\r?\n/);
+            if (lines.length < 2) {
+                document.getElementById('loadingMessage').innerHTML = '⚠️ Tabuľka je prázdna. Pridajte nejaký zápas.';
+                return;
+            }
+
             const stats = {};
             const matches = [];
 
-            rows.forEach((row) => {
-                if (!row.c || row.c.length < 4) return;
+            // Spracovanie riadkov (vynechávame index 0, čo je hlavička domaci, goly_domaci...)
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
 
-                // Bezpečné vytiahnutie hodnôt z Google objektov
-                const home = row.c[0] ? String(row.c[0].v).trim() : '';
-                const homeGoals = row.c[1] ? parseInt(row.c[1].v) || 0 : 0;
-                const away = row.c[2] ? String(row.c[2].v).trim() : '';
-                const awayGoals = row.c[3] ? parseInt(row.c[3].v) || 0 : 0;
+                // Bezpečné rozdelenie riadku podľa čiarok
+                const cells = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
+                
+                const home = cells[0];
+                const homeGoals = parseInt(cells[1]) || 0;
+                const away = cells[2];
+                const awayGoals = parseInt(cells[3]) || 0;
 
-                // Vynechanie prázdnych riadkov a hlavičky tabuľky
-                if (!home || !away || home.toLowerCase() === 'domaci') return;
+                // Ochrana pred neúplnými riadkami
+                if (!home || !away) continue;
 
                 matches.push({ home, away, homeGoals, awayGoals });
 
+                // Inicializácia štatistík
                 if (!stats[home]) stats[home] = { name: home, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
                 if (!stats[away]) stats[away] = { name: away, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
 
@@ -174,12 +181,12 @@
                 } else {
                     stats[home].r++; stats[home].pts += 1; stats[away].r++; stats[away].pts += 1;
                 }
-            });
+            }
 
             // Zoradenie ligy: 1. Body, 2. Rozdiel skóre, 3. Viac strelených gólov
             const sorted = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
             
-            // Vykreslenie tabuľky do dizajnu
+            // Vykreslenie tabuľky do webového dizajnu
             const tbody = document.getElementById('leagueTableBody');
             tbody.innerHTML = '';
             sorted.forEach((t, i) => {
@@ -205,16 +212,17 @@
                 </div>`;
             });
 
+            // Zobrazenie výsledného obsahu
             document.getElementById('loadingMessage').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
 
         } catch (error) {
             console.error(error);
-            document.getElementById('loadingMessage').innerHTML = '❌ Chyba spracovania dát z Google Tabuľky.';
+            document.getElementById('loadingMessage').innerHTML = '❌ Nepodarilo sa prepojiť s Google databázou.<br><small style="color:#64748b; font-weight:normal;">Skontrolujte, či ste v Google tabuľke nevypli Publikovanie na webe.</small>';
         }
-    };
+    }
 
-    loadDataLive();
+    loadData();
 </script>
 </body>
 </html>
