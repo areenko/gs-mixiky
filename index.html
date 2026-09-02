@@ -91,7 +91,6 @@
     <h1>🎮 Herná Liga - Živá Tabuľka</h1>
     <div class="subtitle">Dáta sa automaticky sťahujú z vašej online Google Tabuľky</div>
 
-    <!-- REŽIM NAČÍTAVANIA -->
     <div id="loadingMessage" class="loading">⏳ Načítavam a prepočítavam výsledky...</div>
 
     <div id="mainContent" style="display: none;">
@@ -127,16 +126,15 @@
 
 <script>
     const SPREADSHEET_ID = '1fOJ-2I-GcSN2aHnyhhbVnwvUOt10ei7Zfn0F6Hb2EBk';
-    // Tento link vytiahne čisté textové CSV riadky bez ohľadu na zmeny v Google rozhraní
-    const URL = `https://google.com{SPREADSHEET_ID}/pub?output=csv`;
+    // Natvrdo zacielený link na vygenerovaný CSV formát konkrétneho Hárku 1
+    const URL = `https://google.com{SPREADSHEET_ID}/pub?output=csv&gid=0`;
 
     async function loadData() {
         try {
             const response = await fetch(URL);
-            if (!response.ok) throw new Error('Nepodarilo sa stiahnuť text tabuľky');
+            if (!response.ok) throw new Error('Chyba stiahnutia');
             const csvText = await response.text();
             
-            // Rozdelenie textu na jednotlivé riadky
             const lines = csvText.split(/\r?\n/);
             if (lines.length < 2) {
                 document.getElementById('loadingMessage').innerHTML = '⚠️ Tabuľka je prázdna. Pridajte nejaký zápas.';
@@ -146,26 +144,21 @@
             const stats = {};
             const matches = [];
 
-            // Prechádzame riadky od indexu 1 (vynechávame prvý riadok s hlavičkou)
             for (let i = 1; i < lines.length; i++) {
                 const line = lines[i].trim();
-                if (!line) continue; // Preskočí prázdne riadky na spodu tabuľky
+                if (!line) continue;
 
-                // Rozdelenie riadku na jednotlivé bunky podľa čiarok
                 const cells = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
                 
-                // Bunky očakávame v poradí: A=Domáci, B=Góly domáci, C=Hostia, D=Góly hostia
                 const home = cells[0];
                 const homeGoals = parseInt(cells[1]) || 0;
                 const away = cells[2];
                 const awayGoals = parseInt(cells[3]) || 0;
 
-                // Ak na riadku chýba meno domáceho alebo hosťa, riadok preskočíme
-                if (!home || !away) continue;
+                if (!home || !away || home === 'domaci' || home === 'Domáci') continue;
 
                 matches.push({ home, away, homeGoals, awayGoals });
 
-                // Inicializácia tímov
                 if (!stats[home]) stats[home] = { name: home, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
                 if (!stats[away]) stats[away] = { name: away, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
 
@@ -173,7 +166,6 @@
                 stats[home].gf += homeGoals; stats[home].ga += awayGoals;
                 stats[away].gf += awayGoals; stats[away].ga += homeGoals;
 
-                // Bodový systém: Výhra = 3b, Remíza = 1b, Prehra = 0b
                 if (homeGoals > awayGoals) {
                     stats[home].v++; stats[home].pts += 3; stats[away].p++;
                 } else if (homeGoals < awayGoals) {
@@ -183,10 +175,8 @@
                 }
             }
 
-            // Automatické zoradenie ligy: 1. Body, 2. Rozdiel skóre, 3. Viac strelených gólov
             const sorted = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
             
-            // Vykreslenie tabuľky do dizajnu
             const tbody = document.getElementById('leagueTableBody');
             tbody.innerHTML = '';
             sorted.forEach((t, i) => {
@@ -202,7 +192,6 @@
                 </tr>`;
             });
 
-            // Vykreslenie histórie zápasov
             const historyDiv = document.getElementById('matchHistory');
             historyDiv.innerHTML = matches.length === 0 ? '<p style="color: #64748b; text-align:center;">Zatiaľ neboli odohrané žiadne zápasy.</p>' : '';
             matches.reverse().forEach(m => {
@@ -212,13 +201,12 @@
                 </div>`;
             });
 
-            // Prepnúť zobrazenie z loading na obsah
             document.getElementById('loadingMessage').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
 
         } catch (error) {
             console.error(error);
-            document.getElementById('loadingMessage').innerHTML = '❌ Chyba spojenia s databázou.<br><small style="color:#64748b; font-weight:normal;">Skontrolujte, či je tabuľka správne publikovaná na webe.</small>';
+            document.getElementById('loadingMessage').innerHTML = '❌ Chyba spojenia s databázou.<br><small style="color:#64748b; font-weight:normal;">Uistite sa, že ste v nastavení Zdieľať vybrali "Publikovať ako .csv".</small>';
         }
     }
 
