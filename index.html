@@ -97,7 +97,7 @@
     <div id="mainContent" style="display: none;">
         <!-- TABUĽKA -->
         <div class="card">
-            <h2>📊 Aktuálne poradie</h2>
+            <h2>📊 Poradie</h2>
             <div style="overflow-x: auto;">
                 <table>
                     <thead>
@@ -126,47 +126,48 @@
 </div>
 
 <script>
-    // Zacielenie priamo na váš novovytvorený CSV export z Publikovania na webe
+    // Vaše ID tabuľky
     const SPREADSHEET_ID = '1fOJ-2I-GcSN2aHnyhhbVnwvUOt10ei7Zfn0F6Hb2EBk';
-    const URL = `https://google.com{SPREADSHEET_ID}/pub?output=csv&gid=0`;
+    
+    // Použijeme špeciálny Google dopyt, ktorý obchádza lokálne CORS obmedzenia
+    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData`;
 
-    async function loadData() {
+    function requestData() {
+        const script = document.createElement('script');
+        script.src = url;
+        script.onerror = function() {
+            document.getElementById('loadingMessage').innerHTML = '❌ Nepodarilo sa nadviazať spojenie s Google serverom.';
+        };
+        document.body.appendChild(script);
+    }
+
+    // Táto funkcia spracuje odpoveď priamo od Google bez blokovania
+    window.receiveGoogleData = function(response) {
         try {
-            // Použijeme fetch s vynúteným načítaním čerstvých dát (obíde vyrovnávaciu pamäť)
-            const response = await fetch(URL, { cache: "no-store" });
-            if (!response.ok) throw new Error('Chyba sťahovania dát');
-            
-            const csvText = await response.text();
-            
-            // Rozdelenie na riadky
-            const lines = csvText.split(/\r?\n/);
-            if (lines.length < 2) {
-                document.getElementById('loadingMessage').innerHTML = '⚠️ Tabuľka je prázdna. Pridajte nejaký zápas.';
-                return;
+            if (!response || !response.table || !response.table.rows) {
+                throw new Error('Chybné dáta');
             }
 
+            const rows = response.table.rows;
             const stats = {};
             const matches = [];
 
-            // Spracovanie riadkov (vynechávame index 0, čo je hlavička domaci, goly_domaci...)
-            for (let i = 1; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line) continue;
+            rows.forEach(row => {
+                // Skontrolujeme, či riadok obsahuje aspoň základné stĺpce
+                if (!row.c || row.c.length < 4 || !row.c[0] || !row.c[2]) return; 
 
-                // Bezpečné rozdelenie riadku podľa čiarok
-                const cells = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
+                // Google ukladá text a čísla do vlastnosti .v
+                const home = String(row.c[0].v).trim();
+                const away = String(row.c[2].v).trim();
                 
-                const home = cells[0];
-                const homeGoals = parseInt(cells[1]) || 0;
-                const away = cells[2];
-                const awayGoals = parseInt(cells[3]) || 0;
+                // Ignorujeme prípadnú hlavičku tabuľky, ak by ju Google poslal
+                if (home.toLowerCase() === 'domaci' || away.toLowerCase() === 'hostia') return;
 
-                // Ochrana pred neúplnými riadkami
-                if (!home || !away) continue;
+                const homeGoals = row.c[1] ? (parseInt(row.c[1].v) || 0) : 0;
+                const awayGoals = row.c[3] ? (parseInt(row.c[3].v) || 0) : 0;
 
                 matches.push({ home, away, homeGoals, awayGoals });
 
-                // Inicializácia štatistík
                 if (!stats[home]) stats[home] = { name: home, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
                 if (!stats[away]) stats[away] = { name: away, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
 
@@ -181,12 +182,12 @@
                 } else {
                     stats[home].r++; stats[home].pts += 1; stats[away].r++; stats[away].pts += 1;
                 }
-            }
+            });
 
-            // Zoradenie ligy: 1. Body, 2. Rozdiel skóre, 3. Viac strelených gólov
+            // Zoradenie: Body -> Rozdiel skóre -> Viac strelených gólov
             const sorted = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
             
-            // Vykreslenie tabuľky do webového dizajnu
+            // Vykreslenie Tabuľky
             const tbody = document.getElementById('leagueTableBody');
             tbody.innerHTML = '';
             sorted.forEach((t, i) => {
@@ -202,7 +203,7 @@
                 </tr>`;
             });
 
-            // Vykreslenie histórie zápasov
+            // Vykreslenie Histórie
             const historyDiv = document.getElementById('matchHistory');
             historyDiv.innerHTML = matches.length === 0 ? '<p style="color: #64748b; text-align:center;">Zatiaľ neboli odohrané žiadne zápasy.</p>' : '';
             matches.reverse().forEach(m => {
@@ -212,17 +213,18 @@
                 </div>`;
             });
 
-            // Zobrazenie výsledného obsahu
+            // Prepnúť zobrazenie na hotovú stránku
             document.getElementById('loadingMessage').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
 
-        } catch (error) {
-            console.error(error);
-            document.getElementById('loadingMessage').innerHTML = '❌ Nepodarilo sa prepojiť s Google databázou.<br><small style="color:#64748b; font-weight:normal;">Skontrolujte, či ste v Google tabuľke nevypli Publikovanie na webe.</small>';
+        } catch (e) {
+            console.error(e);
+            document.getElementById('loadingMessage').innerText = '❌ Chyba pri spracovaní dát z tabuľky.';
         }
-    }
+    };
 
-    loadData();
+    // Spustenie dopytu
+    requestData();
 </script>
 </body>
 </html>
