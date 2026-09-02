@@ -5,32 +5,83 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Herná Liga - Živé Výsledky</title>
     <style>
+        :root { 
+            --primary: #6366f1; 
+            --bg: #0f172a; 
+            --surface: #1e293b; 
+            --text: #f8fafc; 
+            --border: #334155; 
+        }
         body { 
-            font-family: system-ui, sans-serif; 
-            background: #0f172a; 
-            color: #f8fafc; 
+            font-family: system-ui, -apple-system, sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
             padding: 20px; 
             margin: 0; 
         }
         .container { 
-            max-width: 1000px; 
+            max-width: 900px; 
             margin: 0 auto; 
         }
         h1 { 
             text-align: center; 
             color: #818cf8; 
+            margin-bottom: 5px; 
+            font-size: 28px;
+        }
+        .subtitle { 
+            text-align: center; 
+            color: #64748b; 
+            margin-bottom: 30px; 
+            font-size: 14px; 
         }
         .card { 
-            background: #1e293b; 
-            padding: 10px; 
+            background: var(--surface); 
+            padding: 20px; 
             border-radius: 12px; 
-            border: 1px solid #334155; 
+            border: 1px solid var(--border); 
+            margin-bottom: 20px; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);
         }
-        iframe {
-            width: 100%;
-            height: 500px;
-            border: none;
-            background: white;
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            text-align: left; 
+        }
+        th, td { 
+            padding: 14px 12px; 
+            border-bottom: 1px solid var(--border); 
+        }
+        th { 
+            background: #334155; 
+            color: #f8fafc;
+            font-weight: 600;
+        }
+        tr:hover {
+            background: #24334d;
+        }
+        .match-item { 
+            padding: 12px 0; 
+            border-bottom: 1px solid var(--border); 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+        }
+        .match-item:last-child {
+            border-bottom: none;
+        }
+        .loading { 
+            text-align: center; 
+            color: #818cf8; 
+            font-weight: bold; 
+            padding: 40px; 
+            font-size: 18px;
+        }
+        .score-badge {
+            background: #334155;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -38,12 +89,138 @@
 
 <div class="container">
     <h1>🎮 Herná Liga - Živá Tabuľka</h1>
-    
-    <div class="card">
-        <<iframe src="https://docs.google.com/spreadsheets/d/e/2PACX-1vTDquKWmve4Kowvw-6U2jvLDf_wRYBItYDBvpx7vOw0Yp3qFiqflD2ZNV7KTOL7v49iA5i96eVchp92/pubhtml?widget=true&amp;headers=false"></iframe>>
-        
+    <div class="subtitle">Dáta sa automaticky sťahujú z vašej online Google Tabuľky</div>
+
+    <!-- NAČÍTAVANIE -->
+    <div id="loadingMessage" class="loading">⏳ Načítavam a prepočítavam výsledky z tabuľky...</div>
+
+    <div id="mainContent" style="display: none;">
+        <!-- PÔVODNÁ TABUĽKA -->
+        <div class="card">
+            <h2>📊 Aktuálne poradie</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Poz.</th>
+                            <th>Hráč / Tím</th>
+                            <th>Z</th>
+                            <th>V</th>
+                            <th>R</th>
+                            <th>P</th>
+                            <th>Skóre</th>
+                            <th>Body</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leagueTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PÔVODNÁ HISTÓRIA ZÁPASOV -->
+        <div class="card">
+            <h2>🗓 Odohrané zápasy</h2>
+            <div id="matchHistory"></div>
+        </div>
     </div>
 </div>
 
+<script>
+    // Vaše ID tabuľky
+    const SPREADSHEET_ID = '1fOJ-2I-GcSN2aHnyhhbVnwvUOut10ei7Zfn0F6Hb2EBk';
+    
+    // Použijeme špeciálny Google krmivo (feed) formát vizualizácie, ktorý prehliadače NEBLOKUJÚ
+    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:handleData`;
+
+    function loadDataLive() {
+        const script = document.createElement('script');
+        script.src = url;
+        script.onerror = function() {
+            document.getElementById('loadingMessage').innerHTML = '❌ Nepodarilo sa načítať dáta.<br><small style="color:#64748b;">Skontrolujte pripojenie alebo zdieľanie tabuľky.</small>';
+        };
+        document.body.appendChild(script);
+    }
+
+    // Spracovanie odpovede od Google a prepočet štatistík
+    window.handleData = function(response) {
+        try {
+            const rows = response.table.rows;
+            const stats = {};
+            const matches = [];
+
+            rows.forEach(row => {
+                // Kontrola, či riadok obsahuje dáta pre domáceho aj hosťa
+                if (!row.c || !row.c[0] || !row.c[2]) return; 
+
+                const home = row.c[0].v;
+                const away = row.c[2].v;
+                
+                // Ochrana pred načítaním hlavičky tabuľky
+                if (home === 'domaci' || home === 'Domáci') return;
+
+                const homeGoals = row.c[1] ? parseInt(row.c[1].v) || 0 : 0;
+                const awayGoals = row.c[3] ? parseInt(row.c[3].v) || 0 : 0;
+
+                matches.push({ home, away, homeGoals, awayGoals });
+
+                if (!stats[home]) stats[home] = { name: home, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
+                if (!stats[away]) stats[away] = { name: away, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
+
+                stats[home].z++; stats[away].z++;
+                stats[home].gf += homeGoals; stats[home].ga += awayGoals;
+                stats[away].gf += awayGoals; stats[away].ga += homeGoals;
+
+                // Systém bodovania: Výhra = 3, Remíza = 1, Prehra = 0
+                if (homeGoals > awayGoals) {
+                    stats[home].v++; stats[home].pts += 3; stats[away].p++;
+                } else if (homeGoals < awayGoals) {
+                    stats[away].v++; stats[away].pts += 3; stats[home].p++;
+                } else {
+                    stats[home].r++; stats[home].pts += 1; stats[away].r++; stats[away].pts += 1;
+                }
+            });
+
+            // Zoradenie tabuľky: Body -> Rozdiel skóre -> Viac strelených gólov
+            const sorted = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
+            
+            // Vykreslenie tabuľky do dizajnu
+            const tbody = document.getElementById('leagueTableBody');
+            tbody.innerHTML = '';
+            sorted.forEach((t, i) => {
+                tbody.innerHTML += `<tr>
+                    <td><strong>${i+1}.</strong></td>
+                    <td>${t.name}</td>
+                    <td>${t.z}</td>
+                    <td>${t.v}</td>
+                    <td>${t.r}</td>
+                    <td>${t.p}</td>
+                    <td>${t.gf}:${t.ga}</td>
+                    <td><strong style="color: #818cf8;">${t.pts}</strong></td>
+                </tr>`;
+            });
+
+            // Vykreslenie histórie zápasov (od najnovšieho po najstarší)
+            const historyDiv = document.getElementById('matchHistory');
+            historyDiv.innerHTML = matches.length === 0 ? '<p style="color: #64748b; text-align:center;">Žiadne odohrané zápasy.</p>' : '';
+            matches.reverse().forEach(m => {
+                historyDiv.innerHTML += `<div class="match-item">
+                    <span>🎮 <strong>${m.home}</strong> vs. <strong>${m.away}</strong></span>
+                    <span class="score-badge">${m.homeGoals} : ${m.awayGoals}</span>
+                </div>`;
+            });
+
+            // Skryť načítavanie a zobraziť hotovú tabuľku
+            document.getElementById('loadingMessage').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+
+        } catch (e) {
+            console.error(e);
+            document.getElementById('loadingMessage').innerText = '❌ Chyba pri automatickom spracovaní tabuľky.';
+        }
+    };
+
+    // Spustenie aplikácie
+    loadDataLive();
+</script>
 </body>
 </html>
