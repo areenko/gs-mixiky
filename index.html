@@ -61,8 +61,16 @@
             background: #24334d;
         }
         .match-card {
-            padding: 14px 0;
+            padding: 10px;
             border-bottom: 1px solid var(--border);
+            border-radius: 6px;
+            transition: background 0.2s ease;
+        }
+        .match-card.clickable {
+            cursor: pointer;
+        }
+        .match-card.clickable:hover {
+            background: #24334d;
         }
         .match-card:last-child {
             border-bottom: none;
@@ -72,13 +80,18 @@
             justify-content: space-between; 
             align-items: center;
         }
+        /* Skryté súpisky, ktoré sa zobrazia až po pridaní triedy .active */
         .rosters {
+            display: none;
             font-size: 13px;
             color: #94a3b8;
-            margin-top: 6px;
-            padding: 6px 10px;
+            margin-top: 10px;
+            padding: 10px;
             background: #111827;
             border-radius: 6px;
+            border-left: 3px solid var(--primary);
+        }
+        .rosters.active {
             display: flex;
             justify-content: space-between;
         }
@@ -97,6 +110,14 @@
             padding: 4px 10px;
             border-radius: 6px;
             font-weight: bold;
+        }
+        .toggle-hint {
+            font-size: 11px;
+            color: #475569;
+            margin-left: 8px;
+        }
+        .match-card.clickable:hover .toggle-hint {
+            color: #818cf8;
         }
     </style>
 </head>
@@ -141,11 +162,8 @@
 </div>
 
 <script>
-    // Vaše NOVÉ ID tabuľky z odkazu
     const SPREADSHEET_ID = '1iaPRPJQXMDf03BdyB6DucvpHM6xFJAC6s5y7bgj2tqs';
-    
-    // Načítavame hárok "Zápasy" (gid=0)
-    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData&gid=0`;
+    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData&gid=0&tq=SELECT+A,B,C,D,E,F,G`;
 
     function requestData() {
         const script = document.createElement('script');
@@ -156,7 +174,14 @@
         document.body.appendChild(script);
     }
 
-    // Spracovanie odpovede z Google Sheets
+    // Funkcia, ktorá prepína viditeľnosť súpisky po kliknutí
+    window.toggleRoster = function(element) {
+        const rostersBlock = element.querySelector('.rosters');
+        if (rostersBlock) {
+            rostersBlock.classList.toggle('active');
+        }
+    };
+
     window.receiveGoogleData = function(response) {
         try {
             if (!response || !response.table || !response.table.rows) {
@@ -168,25 +193,21 @@
             const matches = [];
 
             rows.forEach(row => {
-                // Skontrolujeme, či riadok obsahuje potrebné stĺpce (B, C, D, E)
-                if (!row.c || row.c.length < 5 || !row.c[1] || !row.c[2]) return; 
+                if (!row.c || row.c.length < 3) return;
 
-                // Priradenie stĺpcov podľa štruktúry: B=Tím1, C=Tím2, D=Skóre1, E=Skóre2
-                const home = String(row.c[1].v).trim();
-                const away = String(row.c[2].v).trim();
+                const getVal = (index) => (row.c[index] && row.c[index].v !== null) ? String(row.c[index].v).trim() : '';
+
+                const home = getVal(1);
+                const away = getVal(2);
                 
-                // Ignorovanie hlavičky
                 if (home.toLowerCase() === 'tím 1' || away.toLowerCase() === 'tím 2' || home === '' || away === '') return;
-
-                // Ak skóre zatiaľ nie je zadané (zápas sa neodohral), preskočíme výpočet do tabuľky poradia
-                if (row.c[3] === null || row.c[4] === null || row.c[3].v === null || row.c[4].v === null) return;
+                if (!row.c[3] || row.c[3].v === null || !row.c[4] || row.c[4].v === null) return;
 
                 const homeGoals = parseInt(row.c[3].v) || 0;
                 const awayGoals = parseInt(row.c[4].v) || 0;
 
-                // Načítanie súpisiek zo stĺpcov F (index 5) a G (index 6)
-                const homeRoster = row.c[5] && row.c[5].v ? String(row.c[5].v).trim() : '';
-                const awayRoster = row.c[6] && row.c[6].v ? String(row.c[6].v).trim() : '';
+                const homeRoster = getVal(5);
+                const awayRoster = getVal(6);
 
                 matches.push({ home, away, homeGoals, awayGoals, homeRoster, awayRoster });
 
@@ -206,10 +227,8 @@
                 }
             });
 
-            // Zoradenie tabuľky poradia
             const sorted = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
             
-            // Vykreslenie Tabuľky poradia
             const tbody = document.getElementById('leagueTableBody');
             tbody.innerHTML = '';
             sorted.forEach((t, i) => {
@@ -225,24 +244,32 @@
                 </tr>`;
             });
 
-            // Vykreslenie Zoznamu Zápasov so súpiskami
             const historyDiv = document.getElementById('matchHistory');
             historyDiv.innerHTML = matches.length === 0 ? '<p style="color: #64748b; text-align:center;">Zatiaľ neboli odohrané žiadne zápasy.</p>' : '';
             
             matches.reverse().forEach(m => {
-                // Súpisky zobrazíme iba vtedy, ak je aspoň jedna z nich vyplnená
                 const hasRosters = m.homeRoster || m.awayRoster;
+                
+                // HTML pre súpisky, ak existujú
                 const rosterHtml = hasRosters ? `
                     <div class="rosters">
-                        <div class="roster-team">🏃‍♂️ ${m.homeRoster || 'Nie je zadaná'}</div>
-                        <div class="roster-team" style="text-align: right;">🏃‍♂️ ${m.awayRoster || 'Nie je zadaná'}</div>
+                        <div class="roster-team">🏃‍♂️ <strong>Zostava:</strong> ${m.homeRoster || 'Nezadaná'}</div>
+                        <div class="roster-team" style="text-align: right;">🏃‍♂️ <strong>Zostava:</strong> ${m.awayRoster || 'Nezadaná'}</div>
                     </div>
                 ` : '';
 
+                // Pridáme špeciálnu triedu a preklik iba ak sú súpisky prítomné
+                const cardClass = hasRosters ? 'match-card clickable' : 'match-card';
+                const onclickAttr = hasRosters ? 'onclick="toggleRoster(this)"' : '';
+                const hintHtml = hasRosters ? '<span class="toggle-hint">▼ klikni pre súpisky</span>' : '';
+
                 historyDiv.innerHTML += `
-                    <div class="match-card">
+                    <div class="${cardClass}" ${onclickAttr}>
                         <div class="match-item">
-                            <span>🎮 <strong>${m.home}</strong> vs. <strong>${m.away}</strong></span>
+                            <span>
+                                🎮 <strong>${m.home}</strong> vs. <strong>${m.away}</strong>
+                                ${hintHtml}
+                            </span>
                             <span class="score-badge">${m.homeGoals} : ${m.awayGoals}</span>
                         </div>
                         ${rosterHtml}
@@ -250,18 +277,4 @@
                 `;
             });
 
-            // Prepnúť na zobrazenie hotového obsahu
             document.getElementById('loadingMessage').style.display = 'none';
-            document.getElementById('mainContent').style.display = 'block';
-
-        } catch (e) {
-            console.error(e);
-            document.getElementById('loadingMessage').innerText = '❌ Chyba pri spracovaní dát z tabuľky.';
-        }
-    };
-
-    // Spustenie
-    requestData();
-</script>
-</body>
-</html>
