@@ -166,7 +166,9 @@
 
 <script>
     const SPREADSHEET_ID = '1iaPRPJQXMDf03BdyB6DucvpHM6xFJAC6s5y7bgj2tqs';
-    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData&gid=0&range=A1:G100`;
+    
+    // ZMENA TU: Pridaný upravený SQL dopyt, ktorý natvrdo spracuje text zo súpisiek
+    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData&gid=0&tq=SELECT+A,B,C,D,E,F,G`;
 
     function requestData() {
         const script = document.createElement('script');
@@ -195,9 +197,10 @@
             const matches = [];
 
             rows.forEach((row, rowIndex) => {
-                if (rowIndex === 0) return;
+                if (rowIndex === 0) return; // Preskočiť hlavičku
                 if (!row.c || row.c.length < 3) return;
 
+                // Najbezpečnejšie načítanie textu zo stĺpcov, aby ho Google neignoroval
                 const getCellText = (idx) => {
                     if (!row.c[idx]) return '';
                     if (row.c[idx].v !== null && row.c[idx].v !== undefined) return String(row.c[idx].v).trim();
@@ -205,15 +208,18 @@
                     return '';
                 };
 
-                const home = getCellText(1);
-                const away = getCellText(2);
+                const home = getCellText(1); // Stĺpec B
+                const away = getCellText(2); // Stĺpec C
                 
                 if (home === '' || away === '') return;
-                if (!row.c[3] || !row.c[4] || row.c[3].v === null || row.c[4].v === null) return;
+
+                // Kontrola skóre v D a E
+                if (row.c[3] === null || row.c[4] === null || row.c[3].v === null || row.c[4].v === null) return;
 
                 const homeGoals = parseInt(row.c[3].v) || 0;
                 const awayGoals = parseInt(row.c[4].v) || 0;
 
+                // Kontrola súpisiek v F (index 5) a G (index 6)
                 const homeRoster = getCellText(5);
                 const awayRoster = getCellText(6);
 
@@ -273,13 +279,3 @@
                     <div class="${cardClass}" ${onclickAttr}>
                         <div class="match-item">
                             <span>
-                                🎮 <strong>${m.home}</strong> vs. <strong>${m.away}</strong>
-                                ${hintHtml}
-                            </span>
-                            <span class="score-badge">${m.homeGoals} : ${m.awayGoals}</span>
-                        </div>
-                        ${rosterHtml}
-                    </div>
-                `;
-            });
-
