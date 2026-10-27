@@ -61,10 +61,11 @@
             background: #24334d;
         }
         .match-card {
-            padding: 10px;
+            padding: 12px;
             border-bottom: 1px solid var(--border);
             border-radius: 6px;
             transition: background 0.2s ease;
+            margin-bottom: 4px;
         }
         .match-card.clickable {
             cursor: pointer;
@@ -74,13 +75,13 @@
         }
         .match-card:last-child {
             border-bottom: none;
+            margin-bottom: 0;
         }
         .match-item { 
             display: flex; 
             justify-content: space-between; 
             align-items: center;
         }
-        /* Skryté súpisky, ktoré sa zobrazia až po pridaní triedy .active */
         .rosters {
             display: none;
             font-size: 13px;
@@ -115,6 +116,8 @@
             font-size: 11px;
             color: #475569;
             margin-left: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .match-card.clickable:hover .toggle-hint {
             color: #818cf8;
@@ -163,7 +166,8 @@
 
 <script>
     const SPREADSHEET_ID = '1iaPRPJQXMDf03BdyB6DucvpHM6xFJAC6s5y7bgj2tqs';
-    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData&gid=0&tq=SELECT+A,B,C,D,E,F,G`;
+    // Načítame celý rozsah bez obmedzujúceho SELECT dopytu, aby sme predišli formátovacím chybám Google API
+    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData&gid=0`;
 
     function requestData() {
         const script = document.createElement('script');
@@ -174,7 +178,6 @@
         document.body.appendChild(script);
     }
 
-    // Funkcia, ktorá prepína viditeľnosť súpisky po kliknutí
     window.toggleRoster = function(element) {
         const rostersBlock = element.querySelector('.rosters');
         if (rostersBlock) {
@@ -192,22 +195,33 @@
             const stats = {};
             const matches = [];
 
-            rows.forEach(row => {
+            rows.forEach((row, rowIndex) => {
+                // Preskočíme úplne prvý riadok s hlavičkami v Google Sheets
+                if (rowIndex === 0) return;
                 if (!row.c || row.c.length < 3) return;
 
-                const getVal = (index) => (row.c[index] && row.c[index].v !== null) ? String(row.c[index].v).trim() : '';
+                // Bezpečné vytiahnutie textu (skúša .v aj formátovanú hodnotu .f)
+                const getCellText = (idx) => {
+                    if (!row.c[idx]) return '';
+                    if (row.c[idx].v !== null && row.c[idx].v !== undefined) return String(row.c[idx].v).trim();
+                    if (row.c[idx].f !== null && row.c[idx].f !== undefined) return String(row.c[idx].f).trim();
+                    return '';
+                };
 
-                const home = getVal(1);
-                const away = getVal(2);
+                const home = getCellText(1); // Stĺpec B
+                const away = getCellText(2); // Stĺpec C
                 
-                if (home.toLowerCase() === 'tím 1' || away.toLowerCase() === 'tím 2' || home === '' || away === '') return;
-                if (!row.c[3] || row.c[3].v === null || !row.c[4] || row.c[4].v === null) return;
+                if (home === '' || away === '') return;
+
+                // Kontrola zadaného skóre (D a E)
+                if (!row.c[3] || !row.c[4] || row.c[3].v === null || row.c[4].v === null) return;
 
                 const homeGoals = parseInt(row.c[3].v) || 0;
                 const awayGoals = parseInt(row.c[4].v) || 0;
 
-                const homeRoster = getVal(5);
-                const awayRoster = getVal(6);
+                // Správne indexy pre Súpisky: F je index 5, G je index 6
+                const homeRoster = getCellText(5);
+                const awayRoster = getCellText(6);
 
                 matches.push({ home, away, homeGoals, awayGoals, homeRoster, awayRoster });
 
@@ -227,8 +241,10 @@
                 }
             });
 
+            // Zoradenie tabuľky
             const sorted = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
             
+            // Vykreslenie tabuľky
             const tbody = document.getElementById('leagueTableBody');
             tbody.innerHTML = '';
             sorted.forEach((t, i) => {
@@ -244,13 +260,13 @@
                 </tr>`;
             });
 
+            // Vykreslenie zápasov
             const historyDiv = document.getElementById('matchHistory');
             historyDiv.innerHTML = matches.length === 0 ? '<p style="color: #64748b; text-align:center;">Zatiaľ neboli odohrané žiadne zápasy.</p>' : '';
             
             matches.reverse().forEach(m => {
-                const hasRosters = m.homeRoster || m.awayRoster;
+                const hasRosters = m.homeRoster.length > 0 || m.awayRoster.length > 0;
                 
-                // HTML pre súpisky, ak existujú
                 const rosterHtml = hasRosters ? `
                     <div class="rosters">
                         <div class="roster-team">🏃‍♂️ <strong>Zostava:</strong> ${m.homeRoster || 'Nezadaná'}</div>
@@ -258,23 +274,8 @@
                     </div>
                 ` : '';
 
-                // Pridáme špeciálnu triedu a preklik iba ak sú súpisky prítomné
                 const cardClass = hasRosters ? 'match-card clickable' : 'match-card';
                 const onclickAttr = hasRosters ? 'onclick="toggleRoster(this)"' : '';
-                const hintHtml = hasRosters ? '<span class="toggle-hint">▼ klikni pre súpisky</span>' : '';
+                const hintHtml = hasRosters ? '<span class="toggle-hint">▼ Klikni pre zostavu</span>' : '';
 
                 historyDiv.innerHTML += `
-                    <div class="${cardClass}" ${onclickAttr}>
-                        <div class="match-item">
-                            <span>
-                                🎮 <strong>${m.home}</strong> vs. <strong>${m.away}</strong>
-                                ${hintHtml}
-                            </span>
-                            <span class="score-badge">${m.homeGoals} : ${m.awayGoals}</span>
-                        </div>
-                        ${rosterHtml}
-                    </div>
-                `;
-            });
-
-            document.getElementById('loadingMessage').style.display = 'none';
