@@ -166,8 +166,7 @@
 
 <script>
     const SPREADSHEET_ID = '1iaPRPJQXMDf03BdyB6DucvpHM6xFJAC6s5y7bgj2tqs';
-    // Načítame celý rozsah bez obmedzujúceho SELECT dopytu, aby sme predišli formátovacím chybám Google API
-    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData&gid=0`;
+    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData&gid=0&range=A1:G100`;
 
     function requestData() {
         const script = document.createElement('script');
@@ -196,11 +195,9 @@
             const matches = [];
 
             rows.forEach((row, rowIndex) => {
-                // Preskočíme úplne prvý riadok s hlavičkami v Google Sheets
                 if (rowIndex === 0) return;
                 if (!row.c || row.c.length < 3) return;
 
-                // Bezpečné vytiahnutie textu (skúša .v aj formátovanú hodnotu .f)
                 const getCellText = (idx) => {
                     if (!row.c[idx]) return '';
                     if (row.c[idx].v !== null && row.c[idx].v !== undefined) return String(row.c[idx].v).trim();
@@ -208,18 +205,15 @@
                     return '';
                 };
 
-                const home = getCellText(1); // Stĺpec B
-                const away = getCellText(2); // Stĺpec C
+                const home = getCellText(1);
+                const away = getCellText(2);
                 
                 if (home === '' || away === '') return;
-
-                // Kontrola zadaného skóre (D a E)
                 if (!row.c[3] || !row.c[4] || row.c[3].v === null || row.c[4].v === null) return;
 
                 const homeGoals = parseInt(row.c[3].v) || 0;
                 const awayGoals = parseInt(row.c[4].v) || 0;
 
-                // Správne indexy pre Súpisky: F je index 5, G je index 6
                 const homeRoster = getCellText(5);
                 const awayRoster = getCellText(6);
 
@@ -241,10 +235,8 @@
                 }
             });
 
-            // Zoradenie tabuľky
             const sorted = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
             
-            // Vykreslenie tabuľky
             const tbody = document.getElementById('leagueTableBody');
             tbody.innerHTML = '';
             sorted.forEach((t, i) => {
@@ -260,7 +252,6 @@
                 </tr>`;
             });
 
-            // Vykreslenie zápasov
             const historyDiv = document.getElementById('matchHistory');
             historyDiv.innerHTML = matches.length === 0 ? '<p style="color: #64748b; text-align:center;">Zatiaľ neboli odohrané žiadne zápasy.</p>' : '';
             
@@ -269,8 +260,8 @@
                 
                 const rosterHtml = hasRosters ? `
                     <div class="rosters">
-                        <div class="roster-team">🏃‍♂️ <strong>Zostava:</strong> ${m.homeRoster || 'Nezadaná'}</div>
-                        <div class="roster-team" style="text-align: right;">🏃‍♂️ <strong>Zostava:</strong> ${m.awayRoster || 'Nezadaná'}</div>
+                        <div class="roster-team">🏃‍♂️ <strong>Zostava:</strong> ${m.homeRoster}</div>
+                        <div class="roster-team" style="text-align: right;">🏃‍♂️ <strong>Zostava:</strong> ${m.awayRoster}</div>
                     </div>
                 ` : '';
 
@@ -279,3 +270,16 @@
                 const hintHtml = hasRosters ? '<span class="toggle-hint">▼ Klikni pre zostavu</span>' : '';
 
                 historyDiv.innerHTML += `
+                    <div class="${cardClass}" ${onclickAttr}>
+                        <div class="match-item">
+                            <span>
+                                🎮 <strong>${m.home}</strong> vs. <strong>${m.away}</strong>
+                                ${hintHtml}
+                            </span>
+                            <span class="score-badge">${m.homeGoals} : ${m.awayGoals}</span>
+                        </div>
+                        ${rosterHtml}
+                    </div>
+                `;
+            });
+
