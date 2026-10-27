@@ -60,15 +60,30 @@
         tr:hover {
             background: #24334d;
         }
+        .match-card {
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .match-card:last-child {
+            border-bottom: none;
+        }
         .match-item { 
-            padding: 12px 0; 
-            border-bottom: 1px solid var(--border); 
             display: flex; 
             justify-content: space-between; 
             align-items: center;
         }
-        .match-item:last-child {
-            border-bottom: none;
+        .rosters {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-top: 6px;
+            padding: 6px 10px;
+            background: #111827;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .roster-team {
+            width: 48%;
         }
         .loading { 
             text-align: center; 
@@ -126,11 +141,11 @@
 </div>
 
 <script>
-    // Vaše ID tabuľky
-    const SPREADSHEET_ID = '1fOJ-2I-GcSN2aHnyhhbVnwvUOt10ei7Zfn0F6Hb2EBk';
+    // Vaše NOVÉ ID tabuľky z odkazu
+    const SPREADSHEET_ID = '1iaPRPJQXMDf03BdyB6DucvpHM6xFJAC6s5y7bgj2tqs';
     
-    // Použijeme špeciálny Google dopyt, ktorý obchádza lokálne CORS obmedzenia
-    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData`;
+    // Načítavame hárok "Zápasy" (gid=0)
+    const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:receiveGoogleData&gid=0`;
 
     function requestData() {
         const script = document.createElement('script');
@@ -141,7 +156,7 @@
         document.body.appendChild(script);
     }
 
-    // Táto funkcia spracuje odpoveď priamo od Google bez blokovania
+    // Spracovanie odpovede z Google Sheets
     window.receiveGoogleData = function(response) {
         try {
             if (!response || !response.table || !response.table.rows) {
@@ -153,20 +168,27 @@
             const matches = [];
 
             rows.forEach(row => {
-                // Skontrolujeme, či riadok obsahuje aspoň základné stĺpce
-                if (!row.c || row.c.length < 4 || !row.c[0] || !row.c[2]) return; 
+                // Skontrolujeme, či riadok obsahuje potrebné stĺpce (B, C, D, E)
+                if (!row.c || row.c.length < 5 || !row.c[1] || !row.c[2]) return; 
 
-                // Google ukladá text a čísla do vlastnosti .v
-                const home = String(row.c[0].v).trim();
+                // Priradenie stĺpcov podľa štruktúry: B=Tím1, C=Tím2, D=Skóre1, E=Skóre2
+                const home = String(row.c[1].v).trim();
                 const away = String(row.c[2].v).trim();
                 
-                // Ignorujeme prípadnú hlavičku tabuľky, ak by ju Google poslal
-                if (home.toLowerCase() === 'domaci' || away.toLowerCase() === 'hostia') return;
+                // Ignorovanie hlavičky
+                if (home.toLowerCase() === 'tím 1' || away.toLowerCase() === 'tím 2' || home === '' || away === '') return;
 
-                const homeGoals = row.c[1] ? (parseInt(row.c[1].v) || 0) : 0;
-                const awayGoals = row.c[3] ? (parseInt(row.c[3].v) || 0) : 0;
+                // Ak skóre zatiaľ nie je zadané (zápas sa neodohral), preskočíme výpočet do tabuľky poradia
+                if (row.c[3] === null || row.c[4] === null || row.c[3].v === null || row.c[4].v === null) return;
 
-                matches.push({ home, away, homeGoals, awayGoals });
+                const homeGoals = parseInt(row.c[3].v) || 0;
+                const awayGoals = parseInt(row.c[4].v) || 0;
+
+                // Načítanie súpisiek zo stĺpcov F (index 5) a G (index 6)
+                const homeRoster = row.c[5] && row.c[5].v ? String(row.c[5].v).trim() : '';
+                const awayRoster = row.c[6] && row.c[6].v ? String(row.c[6].v).trim() : '';
+
+                matches.push({ home, away, homeGoals, awayGoals, homeRoster, awayRoster });
 
                 if (!stats[home]) stats[home] = { name: home, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
                 if (!stats[away]) stats[away] = { name: away, z: 0, v: 0, r: 0, p: 0, gf: 0, ga: 0, pts: 0 };
@@ -184,10 +206,10 @@
                 }
             });
 
-            // Zoradenie: Body -> Rozdiel skóre -> Viac strelených gólov
+            // Zoradenie tabuľky poradia
             const sorted = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
             
-            // Vykreslenie Tabuľky
+            // Vykreslenie Tabuľky poradia
             const tbody = document.getElementById('leagueTableBody');
             tbody.innerHTML = '';
             sorted.forEach((t, i) => {
@@ -203,17 +225,32 @@
                 </tr>`;
             });
 
-            // Vykreslenie Histórie
+            // Vykreslenie Zoznamu Zápasov so súpiskami
             const historyDiv = document.getElementById('matchHistory');
             historyDiv.innerHTML = matches.length === 0 ? '<p style="color: #64748b; text-align:center;">Zatiaľ neboli odohrané žiadne zápasy.</p>' : '';
+            
             matches.reverse().forEach(m => {
-                historyDiv.innerHTML += `<div class="match-item">
-                    <span>🎮 <strong>${m.home}</strong> vs. <strong>${m.away}</strong></span>
-                    <span class="score-badge">${m.homeGoals} : ${m.awayGoals}</span>
-                </div>`;
+                // Súpisky zobrazíme iba vtedy, ak je aspoň jedna z nich vyplnená
+                const hasRosters = m.homeRoster || m.awayRoster;
+                const rosterHtml = hasRosters ? `
+                    <div class="rosters">
+                        <div class="roster-team">🏃‍♂️ ${m.homeRoster || 'Nie je zadaná'}</div>
+                        <div class="roster-team" style="text-align: right;">🏃‍♂️ ${m.awayRoster || 'Nie je zadaná'}</div>
+                    </div>
+                ` : '';
+
+                historyDiv.innerHTML += `
+                    <div class="match-card">
+                        <div class="match-item">
+                            <span>🎮 <strong>${m.home}</strong> vs. <strong>${m.away}</strong></span>
+                            <span class="score-badge">${m.homeGoals} : ${m.awayGoals}</span>
+                        </div>
+                        ${rosterHtml}
+                    </div>
+                `;
             });
 
-            // Prepnúť zobrazenie na hotovú stránku
+            // Prepnúť na zobrazenie hotového obsahu
             document.getElementById('loadingMessage').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
 
@@ -223,7 +260,7 @@
         }
     };
 
-    // Spustenie dopytu
+    // Spustenie
     requestData();
 </script>
 </body>
